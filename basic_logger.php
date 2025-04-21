@@ -105,8 +105,7 @@ SKIP_DIR_LINK:
         // полная запаковка каталога
         if (file_exists($path) && is_dir($path)) {
             chdir($base);
-            shell_exec("tar --bzip -cf $prev_date.tar.bz2 $prev_date");
-
+            shell_exec("tar --bzip --remove-files -cf $prev_date.tar.bz2 $prev_date");
             chdir($dir);
         }    
         $this->close();
@@ -182,7 +181,7 @@ SKIP_DIR_LINK:
         $symf = "$path/{$this->log_prefix}.log"; 
         $this->real_name = $result;
         $this->file_name = $result;
-        
+
         if ($create_link) {
             make_symlink($result, $symf);        
             $this->file_name = $symf;

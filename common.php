@@ -27,7 +27,7 @@
     }    
     
     $ws_recv      = false; 
-    $session_logs = array();
+    $session_logs = [];
 
     define ('SQL_TIMESTAMP_MS', 'Y-m-d H:i:s.q');
 

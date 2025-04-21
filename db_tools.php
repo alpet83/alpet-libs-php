@@ -84,6 +84,12 @@
 
         public $replica = null;  // relication connection, for post request to alternate/remote DB
 
+        public $raw_rows = null;
+
+
+        public function active_db(): string {
+            return $this->query('SELECT DATABASE();')->fetch_column();
+        }
 
         public function delete_from(string $table, string $params): bool {
             if (!$this->table_exists($table)) 
@@ -249,26 +255,38 @@
         
         public function select_map(string $columns, string $table, string $params = '', int $mode = MYSQLI_BOTH): array|null // return mapped data [key] => value
         {
-            $result = [];
+            $result = [];            
             $clist = explode(',', $columns);
             $col_cnt = count($clist);
-            if ($col_cnt < 2) return [];
-            $id_key = $clist[0];
-            $id_val = $clist[1];
-            $row_as_array = (MYSQLI_OBJECT != $mode);
+            if ($col_cnt < 2) return [];            
+            $id_key = trim($clist[0], '` ');
+            $id_val = trim($clist[1],'` ');
+
+            $not_obj = MYSQLI_OBJECT != $mode;
+            if (MYSQLI_NUM == $mode)
+                $id_key = 0;
 
             $r = $this->select_from($columns, $table, $params);     
             if (!$r) return null;
-            $row = array();       
-            
-            while ($row = $r->fetch_array($mode & 0xff)) {                          
-                $key = array_shift($row);
+            $row = [];                   
+            if (is_array($this->raw_rows))    
+                $this->raw_rows = [ ]; // reset            
+            while ($row = $r->fetch_array($mode & 0xff)) {           
+                if (is_array($this->raw_rows))               
+                    $this->raw_rows []= $row; // for debug                                
+                
+                $key = array_shift($row); // for MYSQLI_NUM keys - remove 0 with shift                                                   
+                if (null === $key) 
+                        continue;    
                 if (2 == $col_cnt && $id_val != '*') 
-                    $result [$key]= $row[array_key_last($row)];
-                else  {                     
-                    unset($row[0]);
-                    unset($row[$key]);
-                    $result [$key]= $row_as_array ? $row : new mysqli_row($row);  // only data columns returns
+                    $result [$key]= $row[array_key_last($row)]; // key first = key last after array_shift
+                else  {                                                         
+                    if (MYSQLI_NUM == $mode)                         
+                        $row = array_values($row);                    
+                    else
+                        unset($row[$id_key]);                    
+                    if (count($row) > 0)
+                        $result [$key]= $not_obj ? $row : new mysqli_row($row);  // only data columns returns
                 }    
             }  
             return $result;  
@@ -328,7 +346,31 @@
                 return null;
         }
         
-        public function table_exists($table)
+        public function show_create_table(string $table_name): string|bool {
+            if (!$this->table_exists($table_name))
+                return false;
+            $info = $this->try_query("SHOW CREATE TABLE $table_name");                
+            if (is_object($info) && is_array($row = $info->fetch_row()))                   
+                return array_pop($row);                                           
+            
+            return false;
+        }
+        public function show_tables(string $db_name = null, string $like = null) {
+            $query = "SHOW TABLES";
+            if ($db_name) 
+                $query .= " FROM `$db_name`";
+            if ($like)
+                $query .= " LIKE '$like'";
+            $res = $this->try_query($query);            
+            if (!$res) return [];
+            $result = [];
+            $rows = $res->fetch_all(MYSQLI_NUM);
+            foreach ($rows as $row)
+                $result []= $row[0]; 
+            return $result; 
+        }
+
+        public function table_exists(string $table)
         {        
             if (strpos($table, '.') !== false)
                 list($db_name, $tb_name) = explode('.', $table);
@@ -347,13 +389,18 @@
             $r = $this->query($query);
             return ($r && $r->num_rows == 1);
         }
+        
+
         public function try_query($query, $rmode = MYSQLI_STORE_RESULT, $echo = false): bool|mysqli_result  {
             $this->last_query = $query;
             $this->last_read_mode = $rmode;
             $start = pr_time();        
             $result = $this->query($query);
             $rep_res = 'Nope';
-            if ($result && is_object($this->replica))
+            $cmd = strtok($query, ' ');
+            $cmd = strtoupper($cmd);
+            $mod_cmds = 'ALTER,CREATE,INSERT,UPDATE,DELETE,TRUNCATE,DROP,LOCK,RENAME,UNLOCK';
+            if ($result && is_object($this->replica) && str_in($mod_cmds, $cmd)) 
                 $rep_res = $this->replica->query($query);
 
             $elps = round(pr_time() - $start, 3);
@@ -449,7 +496,8 @@
 
 
 
-    class mysqli_row implements ArrayAccess, Countable {
+    class mysqli_row extends stdClass
+        implements ArrayAccess, Countable {
         
         public    $row = [];
         public    $is_row_updated = false;
@@ -628,13 +676,12 @@
         }
     }
 
-    function init_remote_db(string $db_name = null, $db_user = false, $db_pass = false, $db_sock = null)
+    function init_remote_db(string $db_name = null, string $db_user = null, string $db_pass = null, mixed $db_sock = null, array $servers = null)
     {
         global $db_configs, $db_servers, $db_alt_server, $db_error, $db_profile;
         $remote = false;
         $db_error = '';      
-        if ($db_name && isset($db_configs) && isset($db_configs[$db_name])  
-            && false === $db_user) {
+        if (null !== $db_name && isset($db_configs) && isset($db_configs[$db_name])  && null === $db_user) {
             $db_profile = $db_configs[$db_name];  
             $db_user = $db_profile[0];
             $db_pass = $db_profile[1];
@@ -645,10 +692,13 @@
         $driver = new mysqli_driver();
         $rep = $driver->report_mode;
         $driver->report_mode = MYSQLI_REPORT_OFF;        
-        foreach ($db_servers as $alt_server)
+        if (null === $servers)
+            $servers = $db_servers;
+
+        foreach ($servers as $alt_server)
         { 
             $db_alt_server = $alt_server;        
-            if (is_null($alt_server) && is_null($db_sock)) continue;
+            if (null === $alt_server && null === $db_sock) continue;
             $remote = new mysqli_ex(); // no auth data = no connect
             $remote->options(MYSQLI_OPT_CONNECT_TIMEOUT, 15);           
             $res = $remote->real_connect($alt_server, $db_user, $db_pass, $db_name, null, $db_sock);        
