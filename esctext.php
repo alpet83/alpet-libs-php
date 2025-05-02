@@ -13,15 +13,14 @@
                         return "\033[{$m[1]};2;$r;$g;{$b}m";
                         }, $msg);
 
-            $cmsg = preg_replace('/~C(1*\d\d)/', "\033".'[$1m', $msg);
-            if ($cmsg !== $msg) $cmsg .= "\033[0m"; // reset all at end
+            $cmsg = preg_replace('/~C(1*\d\d)/', "\e[\$1m", $msg);
+            if ($cmsg !== $msg) $cmsg .= "\e[0m\e[491m"; // reset all at end
         } 
         elseif ('html' == $color_scheme) {
-        $cmsg = str_replace('~C00', "</font>", $msg); 
-        $cmsg = preg_replace('/~C(1*\d\d)/', "<font class=cl$1>", $cmsg);      
-        if (false !== strpos($cmsg, '<font') && false === strpos($cmsg, '</font>'))  $cmsg .= '</font>';
+            $cmsg = str_replace('~C00', "</font>", $msg); 
+            $cmsg = preg_replace('/~C(1*\d\d)/', "<font class=cl$1>", $cmsg);      
+            if (false !== strpos($cmsg, '<font') && false === strpos($cmsg, '</font>'))  $cmsg .= '</font>';
         }
-
 
         return $cmsg;
     
@@ -36,10 +35,7 @@
         $fmt = preg_replace('/(%[-\dl]*[du])/','~C95$1~C00', $fmt);  // 
         $fmt = preg_replace('/(%[-\.\d]*[fF])/','~C95$1~C00', $fmt);
         $fmt = preg_replace('/(%[-\.\d]*[gG])/','~C95$1~C00', $fmt);
-        if (count($args) > 0)
-        $msg = sprintf($fmt, ...$args);
-        else
-        $msg = $fmt;
+        $msg = (count($args) > 0) ? sprintf($fmt, ...$args) : $fmt;
         
         if ('none' == $color_scheme)
             return $msg;

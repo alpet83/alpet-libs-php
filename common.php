@@ -134,10 +134,10 @@
     }
     
     function strtotime_ms($s) { // accepts yyyy-mm-dd H:i:s.zzz
-        $m = array(); 
-        if (preg_match('/(.*)\.(\d*)(Z*)$/', trim($s), $m)) {
+        $m = []; 
+        if (preg_match('/(.*)\.(\d\d\d)\d*(Z*)$/', trim($s), $m)) {
             $ts = $m[1];
-            if (count($m) > 2) $ts .= $m[3]; 
+            if (count($m) > 2) $ts .= $m[3];             
             $result = strtotime($ts) * 1000 + $m[2];    
         }   
         else  
@@ -156,7 +156,11 @@
     function format_qty(float $qty) {
         if (0 == $qty) return '0';
 
-        if (abs($qty) > 1e6)
+        if (abs($qty) > 1e12)
+            return sprintf("%.3fT", $qty / 1e12);
+        elseif (abs($qty) > 1e9)
+            return sprintf("%.3fB", $qty / 1e9);
+        elseif (abs($qty) > 1e6)
             return sprintf("%.3fM", $qty / 1e6);
         elseif (abs($qty) > 1000)
             return sprintf("%.3fK", $qty / 1000);
@@ -216,7 +220,7 @@
             fputs($log_file, $line);
         else
         {
-            echo ( $line );    
+            echo  $line;    
             flush ();
         }
     }

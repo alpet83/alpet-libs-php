@@ -27,7 +27,9 @@
 
     $failed_sql = '/dev/stderr';
     if (file_exists('logs') && is_dir('logs')) { 
-        $failed_sql = isset($argv) && basename($argv[0]) ?? $_SERVER['SCRIPT_NAME'] ?? 'failed.sql';
+        $failed_sql = 'cli' == php_sapi_name() ? basename($argv[0]) : $_SERVER['SCRIPT_NAME'];
+        if ('' == $failed_sql) 
+            $failed_sql = 'failed.sql';
         $failed_sql = 'logs/'.str_replace('.php', '.sql', $failed_sql);
     }
 
@@ -149,7 +151,7 @@
         }
 
         public function is_clickhouse(): bool {
-            return str_in($this->host_info, 'ClickHouse');
+            return str_in($this->server_info, 'ClickHouse');
         }
 
         public function insert_into(string $table, string $columns, string $values, string $ignore = 'IGNORE')
@@ -347,14 +349,19 @@
         }
         
         public function show_create_table(string $table_name): string|bool {
-            if (!$this->table_exists($table_name))
+            global $db_error;
+            if (!$this->table_exists($table_name)) {
+                $db_error = "ERROR: table not exists $table_name";
                 return false;
+            }
             $info = $this->try_query("SHOW CREATE TABLE $table_name");                
             if (is_object($info) && is_array($row = $info->fetch_row()))                   
                 return array_pop($row);                                           
-            
+            else
+                $db_error .= ' query returned '.var_export($info, true);            
             return false;
         }
+        
         public function show_tables(string $db_name = null, string $like = null) {
             $query = "SHOW TABLES";
             if ($db_name) 
@@ -392,7 +399,7 @@
         
 
         public function try_query($query, $rmode = MYSQLI_STORE_RESULT, $echo = false): bool|mysqli_result  {
-            $this->last_query = $query;
+            $this->last_query = substr($query, 0, 10000);
             $this->last_read_mode = $rmode;
             $start = pr_time();        
             $result = $this->query($query);
