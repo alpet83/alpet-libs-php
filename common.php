@@ -18,14 +18,15 @@
 
     $err_count = 0;
     $curl_last_error = '';
-    $curl_resp_header = '';
+    $curl_resp_header = '';   
     
     class CurlOptions {
         public $connect_timeout = 20;
         public $total_timeout =  40;    
-        public $extra = array();
+        public $extra = [CURLOPT_ENCODING => 'gzip'];  // gzip allows download big REST data faster, especially on a slow connection
     }    
     
+    $curl_default_opts = new CurlOptions();
     $ws_recv      = false; 
     $session_logs = [];
 
@@ -466,7 +467,7 @@
     }
 
     function curl_http_request (string $source, $post_data = null, $curl_opts = null) {
-        global $curl_last_error, $curl_resp_header;    
+        global $curl_last_error, $curl_resp_header, $curl_default_opts;    
 
         if (!function_exists("curl_init")) {    
           die("#FATAL(curl_http_request): curl_init not supported!");
@@ -475,8 +476,8 @@
       
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);    
 
-        if (is_null($curl_opts)) 
-            $curl_opts = new CurlOptions();
+        if ($curl_opts === null) 
+            $curl_opts = $curl_default_opts;
 
         curl_setopt_array($ch, $curl_opts->extra);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $curl_opts->connect_timeout);
