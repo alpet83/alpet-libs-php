@@ -23,14 +23,18 @@
     class CurlOptions {
         public $connect_timeout = 20;
         public $total_timeout =  40;    
-        public $extra = [CURLOPT_ENCODING => 'gzip'];  // gzip allows download big REST data faster, especially on a slow connection
+        public $extra = [];  
+        public function SetCompressed(string $encoding = 'gzip, deflate, br, zstd') {
+            $this->extra[CURLOPT_ENCODING] = $encoding; // gzip allows download big REST data faster, especially on a slow connection
+        }
     }    
     
     $curl_default_opts = new CurlOptions();
+    
     $ws_recv      = false; 
     $session_logs = [];
 
-    define ('SQL_TIMESTAMP_MS', 'Y-m-d H:i:s.q');
+    const SQL_TIMESTAMP_MS = 'Y-m-d H:i:s.q';
 
     $remote_addr = 'localhost';
     if (isset($_SERVER) && isset($_SERVER['REMOTE_ADDR']))
@@ -466,6 +470,13 @@
         file_put_contents($filename, $json); 
     }
 
+
+    function curl_header_cb($ch, $header_line){
+        global $curl_resp_header;
+        $curl_resp_header .= $header_line;
+        return strlen($header_line);
+    }
+
     function curl_http_request (string $source, $post_data = null, $curl_opts = null) {
         global $curl_last_error, $curl_resp_header, $curl_default_opts;    
 
@@ -476,14 +487,18 @@
       
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);    
 
-        if ($curl_opts === null) 
-            $curl_opts = $curl_default_opts;
+        if ($curl_opts === null) {
+            $curl_opts = clone $curl_default_opts;
+            if (str_in($source, '.php'))
+                unset($curl_opts->extra[CURLOPT_ENCODING]); // compatibility issues prevention
+        }
 
         curl_setopt_array($ch, $curl_opts->extra);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $curl_opts->connect_timeout);
         curl_setopt($ch, CURLOPT_TIMEOUT,        $curl_opts->total_timeout);      
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($ch, CURLOPT_HEADER, 1);
+        // curl_setopt($ch, CURLOPT_HEADER, 1);
+        curl_setopt($ch,  CURLOPT_HEADERFUNCTION, 'curl_header_cb');
 
         curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/4.0 (compatible; Easy PHP client; '.php_uname('s').'; PHP/'.phpversion().')');  
         
@@ -491,23 +506,24 @@
           curl_setopt($ch, CURLOPT_POSTFIELDS, $post_data);
         }
         
-        $url = $source;    
-        
+        $url = $source;            
 
         if (strpos($url, 'http') === false)
             $url = "http://$source";
         // echo("url = $url\n");	
         curl_setopt($ch, CURLOPT_URL, $url);
+        $curl_resp_header = '';
+
         $result = curl_exec($ch);
-        if ($result === false) 
-        {
-          $curl_last_error = curl_error($ch); 
-          $curl_resp_header = '';
-          $result = sprintf("#ERROR: curl_exec failed for %s: [%d: %s]\n", $url, curl_errno($ch), $curl_last_error);
+        if ($result === false)         {
+            $curl_last_error = curl_error($ch);             
+            $result = sprintf("#ERROR(curl_exec): %s: [%d: %s], options: %s\n response headers:\n %s", 
+                        $url, curl_errno($ch), $curl_last_error, print_r($curl_opts, true),
+                            $curl_resp_header);
         } else {
-          $header_size = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-          $curl_resp_header = substr($result, 0, $header_size);
-          $result = substr($result, $header_size);
+            // $header_size = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+            // $curl_resp_header = substr($result, 0, $header_size);
+            // $result = substr($result, $header_size);
         }          
         curl_close($ch);
         return $result;
