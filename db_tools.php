@@ -71,6 +71,8 @@
     {     
         public $extended = true;  
         public $last_query = '';
+        public $last_query_time = 0.0;
+        
         protected $last_read_mode = MYSQLI_STORE_RESULT;
 
         public $ins_count = 0;
@@ -195,6 +197,11 @@
             $cr = crop_query($query);        
             $rmode = $conn->last_read_mode;
             file_add_contents($failed_sql, "$query\n");
+            if (str_in($err, 'MySQL server has gone away')) {
+                $conn->close();
+                if ($replica)
+                    $this->replica = null;
+            }
 
             $msg = format_color("$ct_open#FAILED$ct_close [$cr]\n result_mode = $rmode\n with error:\n\t$err\n");            
             if (is_object($this->error_logger) && method_exists($this->error_logger, $this->log_func)) {
@@ -394,7 +401,7 @@
             $query = "SELECT TABLE_NAME\n FROM INFORMATION_SCHEMA.TABLES\n";
             $query.=  "WHERE TABLE_SCHEMA = '$db_name' AND TABLE_NAME = '$tb_name';";
             $r = $this->query($query);
-            return ($r && $r->num_rows == 1);
+            return $r && $r->num_rows == 1;
         }
         
 
@@ -411,6 +418,7 @@
                 $rep_res = $this->replica->query($query);
 
             $elps = round(pr_time() - $start, 3);
+            $this->last_query_time = $elps;
 
             if ($elps > $this->min_profile) {
                 $kq = str_replace("\n", '\n', $query);           
@@ -425,8 +433,9 @@
 
             if (!$result)
                 $this->on_query_error($query, $echo);             
-            if (!$rep_res)
-                $this->on_query_error("REPLICATION: $query", $echo, true);
+            if (!$rep_res) 
+                $this->on_query_error("REPLICATION: $query", $echo, true);                
+            
             return $result;
         } // try_query  
 

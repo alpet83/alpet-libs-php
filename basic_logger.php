@@ -108,7 +108,7 @@ SKIP_DIR_LINK:
             shell_exec("tar --bzip --remove-files -cf $prev_date.tar.bz2 $prev_date");
             chdir($dir);
         }    
-        $this->close();
+        $this->close('logger destruct');
     }
     
     public function archive(int $size_above = 1048576) {
@@ -135,12 +135,12 @@ SKIP_DIR_LINK:
 
     }
 
-    public function close() {
+    public function close(string $reason) {
         if (is_resource($this->log_fd))
             fclose($this->log_fd);
         $this->log_fd = null;  
         $this->archive();
-        log_cmsg("~C93#CLOSED_LOG:~C00 real name %s called from %s", $this->real_name, format_backtrace());
+        log_cmsg("~C93#CLOSED_LOG:~C00 real name %s called due %s from  %s", $this->real_name, $reason, format_backtrace());
         $this->real_name = '';
         $this->file_name = '';
         
@@ -224,14 +224,16 @@ SKIP_DIR_LINK:
 
       $size = $this->file_size();
       $minute = date('i');
-      $huge_size = ($size > $this->size_limit);
+      $huge_size = $size > $this->size_limit;
       if ($huge_size || 0 == $minute && $this->lines >= 5000) {
-        $this->close();        
+        $this->close("log size $size, lines {$this->lines}");        
         $this->file_name = $this->log_filename();
         $this->log_fd = fopen($this->file_name, 'wb');
-        $msg = sprintf("LOG_ROTATE: $this->file_name reaches size %.1f MiB, check for flood", $size / 1048576);
+        $msg = format_color("#LOG_ROTATE: $this->file_name reaches size %.1f MiB, check for flood", $size / 1048576);
         if ($huge_size)
             throw new Exception($msg);
+        else
+            log_cmsg($msg);
       }  
     }
 
