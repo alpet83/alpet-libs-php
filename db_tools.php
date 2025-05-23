@@ -72,7 +72,7 @@
         public $extended = true;  
         public $last_query = '';
         public $last_query_time = 0.0;
-        
+
         protected $last_read_mode = MYSQLI_STORE_RESULT;
 
         public $ins_count = 0;
@@ -410,12 +410,17 @@
             $this->last_read_mode = $rmode;
             $start = pr_time();        
             $result = $this->query($query);
-            $rep_res = 'Nope';
-            $cmd = strtok($query, ' ');
-            $cmd = strtoupper($cmd);
-            $mod_cmds = 'ALTER,CREATE,INSERT,UPDATE,DELETE,TRUNCATE,DROP,LOCK,RENAME,UNLOCK';
-            if ($result && is_object($this->replica) && str_in($mod_cmds, $cmd)) 
-                $rep_res = $this->replica->query($query);
+            $rep_res = 'Ignored';
+            $replica = $this->replica;                
+            if (is_object($replica) && $result) {
+                $cmd = strtok(trim($query), ' ');
+                $cmd = strtoupper($cmd);
+                $mod_cmds = 'ALTER,CREATE,INSERT,UPDATE,DELETE,TRUNCATE,DROP,LOCK,RENAME,UNLOCK';
+                if (str_in($mod_cmds, $cmd)) 
+                    $rep_res = $replica->try_query($query); // possible chain continued...
+                else    
+                    $rep_res .= ":$cmd";
+            }
 
             $elps = round(pr_time() - $start, 3);
             $this->last_query_time = $elps;

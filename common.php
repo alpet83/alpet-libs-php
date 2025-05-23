@@ -23,11 +23,45 @@
     class CurlOptions {
         public $connect_timeout = 20;
         public $total_timeout =  40;    
+
+        public $wait_func = '';
+        public $wait_time = 10000; // 0.01 sec
+
         public $extra = [];  
         public function SetCompressed(string $encoding = 'gzip, deflate, br, zstd') {
             $this->extra[CURLOPT_ENCODING] = $encoding; // gzip allows download big REST data faster, especially on a slow connection
         }
     }    
+
+    class ProfileTimer {
+        public $points = [];
+        public $start = 0.0;
+        public $last = 0.0;
+
+        public function __construct() {
+            $this->start = pr_time();
+            $this->last = $this->start;
+        }
+
+        public function add(string $name) {
+            $t = pr_time();
+            $this->points[$name] = $t - $this->last;
+            $this->last = $t;
+        }
+
+        public function dump(float $min = 0.0, string $func = 'sprintf') {
+            $result = [];
+            foreach ($this->points as $name => $elps) {
+                if ($elps > $min) 
+                    $result []= $name.$func(' %.3f', $elps);
+            }
+            return implode(', ', $result);
+        }
+
+        public function elapsed(): float {
+            return pr_time() - $this->start;
+        }
+    }
     
     $curl_default_opts = new CurlOptions();
     
@@ -221,8 +255,13 @@
         if (false !== strpos($line, '#ERROR'))
             log_error($line);
 
-        if ($log_file)    
+        if (is_resource($log_file))
+        try {   
             fputs($log_file, $line);
+        }
+        catch (Exception $E) {
+            error_log("#EXCEPTION: write to log file failed: ".$E->getMessage());
+        }
         else
         {
             echo  $line;    
@@ -465,8 +504,8 @@
         return json_decode($json, $assoc); 
     }
 
-    function file_save_json($filename, $obj) {
-        $json = json_encode($obj);
+    function file_save_json($filename, mixed $data, int $flags = JSON_PRETTY_PRINT | JSON_NUMERIC_CHECK) {
+        $json = json_encode($data, $flags);
         file_put_contents($filename, $json); 
     }
 
@@ -514,7 +553,35 @@
         curl_setopt($ch, CURLOPT_URL, $url);
         $curl_resp_header = '';
 
-        $result = curl_exec($ch);
+        if ('' == $curl_opts->wait_func)
+            $result = curl_exec($ch);
+        else { // async loading, allows processing other tasks in parallel
+            $mh = curl_multi_init();
+            curl_multi_add_handle($mh, $ch);
+            $active = null;
+            $wfunc = $curl_opts->wait_func;
+            do {
+                $mrc = curl_multi_exec($mh, $active);
+                $wfunc($curl_opts->wait_time);
+            } while ($mrc == CURLM_CALL_MULTI_PERFORM);
+
+            while ($active && $mrc == CURLM_OK) {
+                // Wait for activity on any curl-connection
+                if (curl_multi_select($mh) == -1) 
+                    $wfunc($curl_opts->wait_time);                        
+                
+                do {
+                    $mrc = curl_multi_exec($mh, $active);
+                    $wfunc($curl_opts->wait_time);
+                }
+                while ($mrc == CURLM_CALL_MULTI_PERFORM);
+            }
+            $result = curl_multi_getcontent($ch);
+            curl_multi_remove_handle($mh, $ch);
+            curl_multi_close($mh);
+        }
+
+
         if ($result === false)         {
             $curl_last_error = curl_error($ch);             
             $result = sprintf("#ERROR(curl_exec): %s: [%d: %s], options: %s\n response headers:\n %s", 
