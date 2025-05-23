@@ -3,6 +3,8 @@
     $log_indent = '';  
     $script_name = 'default';
 
+    const REGEX_TIMESTAMP_FILTER = '/(\d\d\d\d-\d\d\-\d\d\s*\d*:*\d*:*\d*)/';
+
     if (php_sapi_name() == 'cli') {
       $script_name = basename(strtolower($argv[0]), '.php');          
       ini_set('display_errors', true);
@@ -305,14 +307,19 @@
      * @param string $inj_filt
      * @return mixed
      */
-    function rqs_param(string $name, mixed $default, string $inj_filt = 'SQL:PHP'): mixed
+    function rqs_param(string $name, mixed $default, string $inj_filt = 'SQL:PHP', mixed $regex_filter = null): mixed
     {
         global $remote_addr;
         if (isset($_REQUEST[$name]))
             $v = $_REQUEST[$name];
         else 
             return $default;
-        if (false !== strpos($inj_filt, 'SQL')) {
+        if (is_string($regex_filter)) {
+            if (preg_match($regex_filter, $v, $m) && count($m) > 1)
+                $v = $m[1];
+        }
+
+        if (str_in($inj_filt, 'SQL')) {
             // $v = urldecode($v);
             $src = $v;
             $v = str_ireplace('--', '', $v);
