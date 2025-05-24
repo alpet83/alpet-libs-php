@@ -27,10 +27,10 @@
         return null;
     }
 
-    function ClickHouseConnectMySQL(string $host = null, string $user = null, string $pass = null, string $db_name = 'datafeed'): ?mysqli_ex {    
+    function ClickHouseConnectMySQL(string|null $host = null, string|null $user = null, string|null $pass = null, string|null $db_name = 'datafeed'): ?mysqli_ex {    
         $mysqli = new mysqli_ex();
         $mysqli->options(MYSQLI_OPT_CONNECT_TIMEOUT, 15);           
-        if (is_null($host))
+        if ($host === null)
             $host = CLICKHOUSE_HOST.':9004';      
         if (!$mysqli->real_connect($host, $user ?? CLICKHOUSE_USER, $pass ?? CLICKHOUSE_PASS,$db_name)) {        
             log_cmsg("~C91 #ERROR:~C00 cannot initialze ClickHouse DB interface with host %s. Error: %s ", $host, $mysqli->connect_error);
