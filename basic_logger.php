@@ -147,7 +147,7 @@ SKIP_DIR_LINK:
     }
 
     public function log_filename(bool $create_link = true) {
-        if (strlen($this->file_name) > 4) 
+        if (strlen($this->file_name) > 4 && file_exists($this->file_name)) 
             return $this->file_name;         
         else
             log_cmsg("~C31#WARN:~C00 not file_name defined for logger %s: %s", $this->log_prefix, $this->file_name);
@@ -225,7 +225,7 @@ SKIP_DIR_LINK:
       $size = $this->file_size();
       $minute = date('i');
       $huge_size = $size > $this->size_limit;
-      if ($huge_size || 0 == $minute && $this->lines >= 5000) {
+      if ($huge_size || 0 == $minute && $this->lines >= 15000) {
         $this->close("log size $size, lines {$this->lines}");        
         $this->file_name = $this->log_filename();
         $this->log_fd = fopen($this->file_name, 'wb');

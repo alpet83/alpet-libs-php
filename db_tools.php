@@ -196,6 +196,9 @@
             $err = $conn->error;          
             $cr = crop_query($query);        
             $rmode = $conn->last_read_mode;
+            $fsz = filesize($failed_sql) / 1048576.0; 
+            if ($fsz > 10)
+                file_put_contents($failed_sql, sprintf("-- Truncated %s after size reached %.1f MiB\n", $failed_sql, $fsz));
             file_add_contents($failed_sql, "$query\n");
             if (str_in($err, 'MySQL server has gone away')) {
                 $conn->close();
@@ -437,7 +440,7 @@
             }                        
 
             if (!$result)
-                $this->on_query_error($query, $echo);             
+                $this->on_query_error($query, $echo, false);             
             if (!$rep_res) 
                 $this->on_query_error("REPLICATION: $query", $echo, true);                
             
